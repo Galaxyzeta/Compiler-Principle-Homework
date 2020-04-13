@@ -1,9 +1,9 @@
 package com.galaxyzeta;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
+
 import com.galaxyzeta.entity.WordCodec;
 import com.galaxyzeta.entity.ParseResult;
 
@@ -17,7 +17,6 @@ import java.io.IOException;
  */
 public class WordAnalyzer {
 
-	private String program;
 	private LinkedList<ParseResult> tupleResult = new LinkedList<>();
 	private boolean verbose = true;
 
@@ -26,7 +25,8 @@ public class WordAnalyzer {
 	
 	private static HashMap<String, Integer> codecMap = new HashMap<>();
 	private static HashMap<String, Integer> fix = new HashMap<>();
-	private static LinkedList<Character> blanklist = new LinkedList<>(Arrays.asList(' ', '\t', '\n', (char)13));
+	private static LinkedList<Character> blanklist = new LinkedList<>(Arrays.asList(' ', '\t', '\n', '\r'));
+	private static LinkedList<String> priorityList = new LinkedList<>(Arrays.asList("KEYWORD", "ID", "NUMBER", "OPERATOR_TYPE1","OPERATOR_TYPE2", "COMMENT", "PARENTHESE", "EOL", "BLANK"));
 
 	static {
 		// Put fore-read fix into hashmap
@@ -59,26 +59,31 @@ public class WordAnalyzer {
 	/**
 	 * Read program from file.
 	 */
-	public void readProgram() {
+	public void readProgram() throws WordSpellException {
 		StringBuilder sb = new StringBuilder();
 		boolean blankFlag = false;
+		int lineNumber = 1;
 		try (FileReader fr = new FileReader(inputPath)) {
 			int c = -1;
 			int blocked = 0;
 			boolean quitFlag = false;
+			char chr = '\n';
 			while(quitFlag == false) {
 				//EOF detect
 				if(blocked == 0) {
 					c = fr.read();
 				} else {
-					blocked -= 1;
+					blocked --;
 				}
 				if(c == -1) {
 					quitFlag = true;
-				}
-				char chr = (char)c;
-				if(c == 13 || c == -1) {
 					chr = '\n';
+				} else {
+					chr = (char)c;
+					if (chr == '\n') {
+						lineNumber ++;
+						System.out.println("[INFO]LineNumber="+lineNumber);
+					}
 				}
 				// Judge useless blank to save time.
 				if (blanklist.contains(chr)) {
@@ -95,11 +100,12 @@ public class WordAnalyzer {
 				sb.append(chr);
 				String str = sb.toString();
 
+				boolean breakFlag = false;
 				// Iterate over a priority base array. Try to fit into each pattern.
-				ArrayList<String> arr = new ArrayList<>(Arrays.asList("KEYWORD", "ID", "NUMBER", "OPERATOR_TYPE1","OPERATOR_TYPE2", "COMMENT", "PARENTHESE", "EOL", "BLANK"));
-				for (String each : arr) {
+				for (String each : priorityList) {
 					String match = PatternFactory.checkPattern(each, str);
 					if (match != null) {
+						breakFlag = true;
 						// Handle fore read.
 						if (fix.containsKey(each)) {
 							blocked = 1;
@@ -119,40 +125,42 @@ public class WordAnalyzer {
 						break;
 					}
 				}
+				if (breakFlag == true) {
+					continue;
+				}
+
+				//Error detect
+				String errorMessage = PatternFactory.checkErrorPattern(str);
+				if (errorMessage != null) {
+					throw new WordSpellException(errorMessage, str, lineNumber);
+				}
+
 			}
 			System.out.println(tupleResult);
 
 			// Write result into a file
-			try (FileWriter fw = new FileWriter(new File(outputPath))){
-				sb = new StringBuilder();
-				for (ParseResult pr : tupleResult) {
-					sb.append(pr.toString());
-					sb.append('\n');
-				}
-				fw.write(sb.toString());
-			} catch (IOException e) {
-				e.printStackTrace();
+			FileWriter fw = new FileWriter(new File(outputPath));
+			sb = new StringBuilder();
+			for (ParseResult pr : tupleResult) {
+				sb.append(pr.toString());
+				sb.append('\n');
 			}
-			
-			sb.append('\n');
+			fw.write(sb.toString());
+			fw.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		this.program = sb.toString();
 	}
 
-	/**
-	 * Set program directly for debug usage.
-	*/
-	public void readProgramDebug(String program) {
-		this.program = program;
-	}
 
 	public static void main(String[] args) {
 		System.out.println((int)'\n');
 		//String s = "+-*/123+++++--- asdbegin begin if (;)#if else then\nasd";
 		WordAnalyzer wa = new WordAnalyzer("other/input.txt", "other/log.txt");
-		wa.readProgram();
-		//wa.readProgramDebug(")\na:=333");
+		try {
+			wa.readProgram();
+		} catch (WordSpellException e) {
+			e.printStackTrace();
+		}
 	}
 }
