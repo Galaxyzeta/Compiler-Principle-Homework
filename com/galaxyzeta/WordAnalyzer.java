@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 
 import com.galaxyzeta.entity.WordCodec;
-import com.galaxyzeta.entity.ParseResult;
+import com.galaxyzeta.entity.Tuple;
 
 import java.io.File;
 import java.io.FileReader;
@@ -17,8 +17,9 @@ import java.io.IOException;
  */
 public class WordAnalyzer {
 
-	private LinkedList<ParseResult> tupleResult = new LinkedList<>();
+	private LinkedList<Tuple<String, Integer>> tupleResult = new LinkedList<>();
 	private boolean verbose = true;
+	private boolean ignoreError = false;
 
 	private String inputPath = null;
 	private String outputPath = null;
@@ -26,19 +27,21 @@ public class WordAnalyzer {
 	private static HashMap<String, Integer> codecMap = new HashMap<>();
 	private static HashMap<String, Integer> fix = new HashMap<>();
 	private static LinkedList<Character> blanklist = new LinkedList<>(Arrays.asList(' ', '\t', '\n', '\r'));
-	private static LinkedList<String> priorityList = new LinkedList<>(Arrays.asList("KEYWORD", "ID", "NUMBER", "OPERATOR_TYPE1","OPERATOR_TYPE2", "COMMENT", "PARENTHESE", "EOL", "BLANK"));
+	private static LinkedList<String> priorityList = new LinkedList<>(Arrays.asList("KEYWORD", "ID", "INTEGER", "FLOAT", "OPERATOR_TYPE1","OPERATOR_TYPE2", "COMMENT", "PARENTHESE", "EOL", "BLANK"));
 
 	static {
 		// Put fore-read fix into hashmap
 		fix.put("KEYWORD", -1);
-		fix.put("NUMBER", -1);
+		fix.put("INTEGER", -1);
+		fix.put("FLOAT", -1);
 		fix.put("OPERATOR_TYPE1", -1);
 		fix.put("ID", -1);
 		fix.put("COMMENT", -1);
 
 		// Record codec for each pattern. -1 means useless codec that will NOT be saved into final result.
 		codecMap.put("KEYWORD", WordCodec.KEYWORD.ordinal());
-		codecMap.put("NUMBER", WordCodec.NUMBER.ordinal());
+		codecMap.put("FLOAT", WordCodec.FLOAT.ordinal());
+		codecMap.put("INTEGER", WordCodec.INTEGER.ordinal());
 		codecMap.put("ID", WordCodec.ID.ordinal());
 		codecMap.put("OPERATOR_TYPE1", WordCodec.OPERATOR.ordinal());
 		codecMap.put("OPERATOR_TYPE2", WordCodec.OPERATOR.ordinal());
@@ -57,11 +60,26 @@ public class WordAnalyzer {
 	}
 
 	/**
+	 * @param verbose the verbose to set
+	 */
+	public void setVerbose(boolean verbose) {
+		this.verbose = verbose;
+	}
+
+	/**
+	 * @param ignoreError the ignoreError to set
+	 */
+	public void setIgnoreError(boolean ignoreError) {
+		this.ignoreError = ignoreError;
+	}
+
+	/**
 	 * Read program from file.
 	 */
 	public void readProgram() throws WordSpellException {
 		StringBuilder sb = new StringBuilder();
 		boolean blankFlag = false;
+		boolean hasError = false;
 		int lineNumber = 1;
 		try (FileReader fr = new FileReader(inputPath)) {
 			int c = -1;
@@ -120,7 +138,7 @@ public class WordAnalyzer {
 						// Save result into a map. Only useful results can be saved.
 						int codec = codecMap.get(each);
 						if (codec>=0) {
-							tupleResult.add(new ParseResult(match, codec));
+							tupleResult.add(new Tuple<String, Integer>(match, codec));
 						}
 						break;
 					}
@@ -132,18 +150,34 @@ public class WordAnalyzer {
 				//Error detect
 				String errorMessage = PatternFactory.checkErrorPattern(str);
 				if (errorMessage != null) {
-					throw new WordSpellException(errorMessage, str, lineNumber);
+					WordSpellException except = new WordSpellException(errorMessage, str, lineNumber);
+					if (ignoreError == false) {
+						throw except;
+					} else {
+						// Skip to next line
+						hasError = true;
+						except.printStackTrace();
+						sb = new StringBuilder();
+						blocked = 0;
+						while(c != (int)'\r' && c != -1) {
+							c = fr.read();
+						}
+					}
 				}
-
 			}
 			System.out.println(tupleResult);
+
+			if (hasError) {
+				System.out.println("[INFO]Result not saved due to previous error!");
+				return;
+			}
 
 			// Write result into a file
 			FileWriter fw = new FileWriter(new File(outputPath));
 			sb = new StringBuilder();
-			for (ParseResult pr : tupleResult) {
+			for (Tuple<String, Integer> pr : tupleResult) {
 				sb.append(pr.toString());
-				sb.append('\n');
+				sb.append("\r\n");
 			}
 			fw.write(sb.toString());
 			fw.close();
@@ -156,7 +190,8 @@ public class WordAnalyzer {
 	public static void main(String[] args) {
 		System.out.println((int)'\n');
 		//String s = "+-*/123+++++--- asdbegin begin if (;)#if else then\nasd";
-		WordAnalyzer wa = new WordAnalyzer("other/input.txt", "other/log.txt");
+		WordAnalyzer wa = new WordAnalyzer("other/mathematical.txt", "other/log.txt");
+		wa.setIgnoreError(true);
 		try {
 			wa.readProgram();
 		} catch (WordSpellException e) {

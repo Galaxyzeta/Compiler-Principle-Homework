@@ -12,8 +12,11 @@ A Java-based Lexual Analyzer.
 
 类概述：
 
-1. `PatternFactory`：在其中添加匹配规则。包含一个用反射设计的匹配方法，参数1为匹配规则字符串，2为 
+1. `PatternFactory`：在其中添加匹配规则。包含一个用反射设计的匹配方法，参数1为匹配规则字符串，2为
 2. `WordAnalyzer`：词法分析类。包含一个边读取边分析的方法，以及根据对应匹配规则名称确定编码类别的 `HashMap`。
 3. `WordCodec`：编码类别枚举。
 4. `ParseResult`：生成的二元式实体类。
 5. `WordSpellException`：错误处理类。
+
+## 基于java的递归下降子程序分析
+A Java-based Top-Down Syntax Analyzer
